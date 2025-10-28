@@ -22,8 +22,6 @@ from physicsnemo.datapipes.meta import DatapipeMetaData
 import nvidia.dali as dali
 import nvidia.dali.plugin.pytorch as dali_pth
 
-import nvidia.dali as dali
-
 LOGGER = logging.getLogger(__name__)
 
 @dataclass
@@ -78,7 +76,7 @@ class NativeGridDatapipe(Datapipe):
             number of validation rollouts, by default 1
         """
         
-        super().__init__()
+        super().__init__(meta=MetaData())
         
         self.label = label
         self.data = data_reader
@@ -253,12 +251,13 @@ class NativeGridDatapipe(Datapipe):
         )
     
     def _create_pipeline(self) -> dali.Pipeline:
+        device_id = (self.device.index if self.device.type == "cuda" else 0) or 0
         pipe = dali.Pipeline(
             batch_size=self.batch_size,
             num_threads=4,
             prefetch_queue_depth=self.prefetch_factor,
             py_num_workers=self.num_workers,
-            device_id=self.device.index,
+            device_id=device_id,
             py_start_method="spawn",
             exec_async=True,
             exec_pipelined=True,
@@ -281,7 +280,7 @@ class NativeGridDatapipe(Datapipe):
                 grid_indices=self.grid_indices,
                 reader_group_rank=self.reader_group_rank,
                 ensemble_dim=self.ensemble_dim,
-                num_batches=len(self.valid_date_indices) // self.batch_size,
+                num_batches=len(self.chunk_index_range) // self.batch_size if self.chunk_index_range is not None else len(self.valid_date_indices) // self.batch_size,
             )
 
             x = dali.fn.external_source(source, parallel=True, batch=False)
@@ -354,7 +353,7 @@ class NativeGridExternalSource:
         else:
             self.shuffled_chunk_indices = self.valid_date_indices[self.chunk_index_range]
 
-    def __call__(self, sample_info: dali.types.SampleInfo) -> Tuple[torch.Tensor]:
+    def __call__(self, sample_info: dali.types.SampleInfo) -> Tuple[np.ndarray]:
         if sample_info.iteration >= self.num_batches:
             raise StopIteration()
         i = self.shuffled_chunk_indices[sample_info.idx_in_epoch]
@@ -375,7 +374,7 @@ class NativeGridExternalSource:
             # in the same operation.
             x = self.data[start:end:timeincrement, :, :, :]
             x = x[..., grid_shard_indices]  # select the grid shard
-        x = rearrange(x, "dates variables ensemble gridpoints -> dates ensemble gridpoints variables")
-        self.ensemble_dim = 1
-
-        return torch.from_numpy(x)
+        # collapse ensemble dimension by taking ensemble index 0
+        # output shape: [dates, gridpoints, variables]
+        x = rearrange(x, "dates variables ensemble gridpoints -> dates gridpoints variables")
+        return x.astype(np.float32)

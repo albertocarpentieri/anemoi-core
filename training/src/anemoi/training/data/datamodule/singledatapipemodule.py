@@ -31,6 +31,7 @@ LOGGER = logging.getLogger(__name__)
 class DummyDataset:
     def __init__(self, data):
         self.data = data
+        self.name_to_index = data.name_to_index
 
 class DaliDataModule(pl.LightningDataModule):
     """Anemoi Datasets data module for PyTorch Lightning."""
