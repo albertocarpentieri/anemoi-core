@@ -254,7 +254,7 @@ class NativeGridDatapipe(Datapipe):
         device_id = (self.device.index if self.device.type == "cuda" else 0) or 0
         pipe = dali.Pipeline(
             batch_size=self.batch_size,
-            num_threads=4,
+            num_threads=2,
             prefetch_queue_depth=self.prefetch_factor,
             py_num_workers=self.num_workers,
             device_id=device_id,
@@ -296,10 +296,9 @@ class NativeGridDatapipe(Datapipe):
             self.per_worker_init(n_workers=1, worker_id=0)
         if self.pipe is None:
             self.pipe = self._create_pipeline()
+        
         self.pipe.reset()
-        dali_iter = dali_pth.DALIGenericIterator([self.pipe], output_map=["x"], auto_reset=True)
-        for batch in dali_iter:
-            yield batch[0]["x"]
+        return dali_pth.DALIGenericIterator([self.pipe], output_map=["x"], auto_reset=True)
 
     def __len__(self):
         if self.chunk_index_range is None:
@@ -343,6 +342,7 @@ class NativeGridExternalSource:
         self.reader_group_rank = reader_group_rank
         self.ensemble_dim = ensemble_dim
         self.num_batches = num_batches
+        self.last_epoch = None
 
         if self.shuffle:
             self.shuffled_chunk_indices = self.rng.choice(
@@ -356,6 +356,11 @@ class NativeGridExternalSource:
     def __call__(self, sample_info: dali.types.SampleInfo) -> Tuple[np.ndarray]:
         if sample_info.iteration >= self.num_batches:
             raise StopIteration()
+        # shuffle per epoch like Climate pipeline
+        if self.shuffle and sample_info.epoch_idx != self.last_epoch:
+            rng = np.random.default_rng(seed=sample_info.epoch_idx)
+            rng.shuffle(self.shuffled_chunk_indices)
+            self.last_epoch = sample_info.epoch_idx
         i = self.shuffled_chunk_indices[sample_info.idx_in_epoch]
         start = i + self.relative_date_indices[0]
         end = i + self.relative_date_indices[-1] + 1
@@ -374,7 +379,7 @@ class NativeGridExternalSource:
             # in the same operation.
             x = self.data[start:end:timeincrement, :, :, :]
             x = x[..., grid_shard_indices]  # select the grid shard
-        # collapse ensemble dimension by taking ensemble index 0
+        # collapse ensemble dimension by taking first ensemble, then reorder
         # output shape: [dates, gridpoints, variables]
-        x = rearrange(x, "dates variables ensemble gridpoints -> dates gridpoints variables")
+        x = rearrange(x, "dates variables ensemble gridpoints -> dates ensemble gridpoints variables")
         return x.astype(np.float32)

@@ -191,7 +191,9 @@ class GraphForecaster(BaseGraphModule):
         batch: torch.Tensor,
         validation_mode: bool = False,
     ) -> tuple[torch.Tensor, Mapping[str, torch.Tensor]]:
-
+        if isinstance(batch, list):
+            batch = batch[0]["x"]
+            
         loss = torch.zeros(1, dtype=batch.dtype, device=self.device, requires_grad=False)
         metrics = {}
         y_preds = []
