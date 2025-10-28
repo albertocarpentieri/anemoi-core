@@ -13,7 +13,7 @@ Anemoi training contains miscellanous tools for training data-driven weather for
 
 The documentation can be found at:
 
-- https://anemoi-training.readthedocs.io/ lala
+- https://anemoi-training.readthedocs.io/
 - https://anemoi-models.readthedocs.io/
 - https://anemoi-graphs.readthedocs.io/
 
