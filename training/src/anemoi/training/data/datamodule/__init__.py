@@ -9,5 +9,6 @@
 
 from .ensdatamodule import AnemoiEnsDatasetsDataModule
 from .singledatamodule import AnemoiDatasetsDataModule
+from .singledatapipemodule import DaliDataModule
 
-__all__ = ["AnemoiDatasetsDataModule", "AnemoiEnsDatasetsDataModule"]
+__all__ = ["AnemoiDatasetsDataModule", "AnemoiEnsDatasetsDataModule", "DaliDataModule"]

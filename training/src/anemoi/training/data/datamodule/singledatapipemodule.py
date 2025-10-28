@@ -20,7 +20,7 @@ from torch_geometric.data import HeteroData
 
 from anemoi.datasets.data import open_dataset
 from anemoi.models.data_indices.collection import IndexCollection
-from anemoi.training.data.dataset import ERA5ZarrDaliDatapipe
+from anemoi.training.data.dataset import NativeGridDatapipe
 from anemoi.training.data.grid_indices import BaseGridIndices
 from anemoi.training.schemas.base_schema import BaseSchema
 from anemoi.training.utils.worker_init import worker_init_func
@@ -193,56 +193,6 @@ class DaliDataModule(pl.LightningDataModule):
     def ds_test(self):
         return DummyDataset(open_dataset(self.config.dataloader.test))
 
-    # @cached_property
-    # def ds_valid(self) -> NativeGridDataset:
-    #     if not self.config.dataloader.training.end < self.config.dataloader.validation.start:
-    #         LOGGER.warning(
-    #             "Training end date %s is not before validation start date %s.",
-    #             self.config.dataloader.training.end,
-    #             self.config.dataloader.validation.start,
-    #         )
-    #     return self._get_dataset(
-    #         open_dataset(self.config.dataloader.validation),
-    #         shuffle=False,
-    #         val_rollout=self.config.dataloader.validation_rollout,
-    #         label="validation",
-    #     )
-
-    # @cached_property
-    # def ds_test(self) -> NativeGridDataset:
-    #     assert self.config.dataloader.training.end < self.config.dataloader.test.start, (
-    #         f"Training end date {self.config.dataloader.training.end} is not before"
-    #         f"test start date {self.config.dataloader.test.start}"
-    #     )
-    #     assert self.config.dataloader.validation.end < self.config.dataloader.test.start, (
-    #         f"Validation end date {self.config.dataloader.validation.end} is not before"
-    #         f"test start date {self.config.dataloader.test.start}"
-    #     )
-    #     return self._get_dataset(
-    #         open_dataset(self.config.dataloader.test),
-    #         shuffle=False,
-    #         label="test",
-    #     )
-
-    # def _get_dataset(
-    #     self,
-    #     data_reader: Callable,
-    #     shuffle: bool = True,
-    #     val_rollout: int = 1,
-    #     label: str = "generic",
-    # ) -> NativeGridDataset:
-
-    #     data_reader = self.add_trajectory_ids(data_reader)  # NOTE: Functionality to be moved to anemoi datasets
-
-    #     return NativeGridDataset(
-    #         data_reader=data_reader,
-    #         relative_date_indices=self.relative_date_indices(val_rollout),
-    #         timestep=self.config.data.timestep,
-    #         shuffle=shuffle,
-    #         grid_indices=self.grid_indices,
-    #         label=label,
-    #     )
-
     def _get_dataloader(self, stage: str) -> DataLoader:
         assert stage in {"training", "validation", "test"}
         if stage == "training":
@@ -250,23 +200,20 @@ class DaliDataModule(pl.LightningDataModule):
             label = "train"
             val_rollout = 1
             shuffle = True
-            # self.ds_train = DummyDataset(data)
         elif stage == "validation":
             data = open_dataset(self.config.dataloader.validation)
             label = "validation"
             shuffle = False
             val_rollout = self.config.dataloader.validation_rollout
-            # self.ds_valid = DummyDataset(data)
         elif stage == "test":
             data = open_dataset(self.config.dataloader.test)
             label = "test"
             shuffle = False
             val_rollout = 1
-            # self.ds_test = DummyDataset(data)
 
         data = self.add_trajectory_ids(data)
         self.relative_date_indices(val_rollout)
-        dp = ERA5ZarrDaliDatapipe(
+        dp = NativeGridDatapipe(
             data_reader=data,
             grid_indices=self.grid_indices,
             relative_date_indices=self.relative_date_indices(val_rollout),

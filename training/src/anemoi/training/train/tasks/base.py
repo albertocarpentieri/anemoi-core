@@ -46,6 +46,8 @@ if TYPE_CHECKING:
 
     from anemoi.models.data_indices.collection import IndexCollection
 
+# add import for nvtx
+import torch.cuda.nvtx as nvtx
 
 LOGGER = logging.getLogger(__name__)
 
@@ -660,6 +662,8 @@ class BaseGraphModule(pl.LightningModule, ABC):
         return metrics
 
     def training_step(self, batch: torch.Tensor, batch_idx: int) -> torch.Tensor:
+        nvtx.range_pop() # close "Forward"
+        nvtx.range_push(f"Forward batch={batch_idx}")
         del batch_idx
 
         train_loss, _, _ = self._step(batch)
@@ -673,7 +677,7 @@ class BaseGraphModule(pl.LightningModule, ABC):
             batch_size=batch.shape[0],
             sync_dist=True,
         )
-
+        nvtx.range_pop()
         return train_loss
 
     def lr_scheduler_step(self, scheduler: CosineLRScheduler, metric: None = None) -> None:
@@ -784,3 +788,31 @@ class BaseGraphModule(pl.LightningModule, ABC):
                 hyper_params,
                 expand_keys=expand_keys,
             )
+
+    # add additional functions to track nvtx ranges
+    
+    def on_train_batch_start(self, batch, batch_idx):
+        # Data loading finished just before this hook.
+        nvtx.range_push(f"DataLoad batch={batch_idx}")
+        return super().on_train_batch_start(batch, batch_idx)
+
+    def on_before_backward(self, loss):
+        nvtx.range_push("Backward")
+        return super().on_before_backward(loss)
+
+    def on_after_backward(self):
+        nvtx.range_pop()
+        return super().on_after_backward()
+
+    def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_closure):
+        nvtx.range_push("OptimizerStep")
+        optimizer.step(closure=optimizer_closure)
+        nvtx.range_pop()
+
+    def on_before_batch_transfer(self, batch, dataloader_idx: int):
+        nvtx.range_push(f"DataLoad/Collate/Transfer step={self.global_step}")
+        return batch
+
+    def on_after_batch_transfer(self, batch, dataloader_idx: int):
+        nvtx.range_pop()
+        return batch
