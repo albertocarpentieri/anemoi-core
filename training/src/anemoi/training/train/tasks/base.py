@@ -498,17 +498,9 @@ class BaseGraphModule(pl.LightningModule, ABC):
         return loss, metrics_next
 
     def _extract_tensor_from_batch(self, batch):
-        import torch as _torch
         # Only extract if DALI returns a list/tuple of dicts
-        if isinstance(batch, (list, tuple)) and len(batch) > 0:
-            b0 = batch[0]
-            if isinstance(b0, dict):
-                if "x" in b0:
-                    return b0["x"]
-                # fallback: first tensor value
-                for v in b0.values():
-                    if isinstance(v, _torch.Tensor):
-                        return v
+        if isinstance(batch, list):
+            return batch[0]["x"]
         return batch
 
     def on_after_batch_transfer(self, batch: torch.Tensor, _: int) -> torch.Tensor:
@@ -681,7 +673,7 @@ class BaseGraphModule(pl.LightningModule, ABC):
         nvtx.range_pop() # close "Forward"
         nvtx.range_push(f"Forward batch={batch_idx}")
         del batch_idx
-            
+        batch = self._extract_tensor_from_batch(batch)
         train_loss, _, _ = self._step(batch)
         self.log(
             "train_" + self.loss.name + "_loss",
@@ -725,7 +717,7 @@ class BaseGraphModule(pl.LightningModule, ABC):
 
         """
         del batch_idx
-            
+        batch = self._extract_tensor_from_batch(batch)
         with torch.no_grad():
             val_loss, metrics, y_preds = self._step(batch, validation_mode=True)
 
